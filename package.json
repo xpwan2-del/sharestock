@@ -1,0 +1,10 @@
+{
+  "name": "toplenged-stock-entry",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TopLenged A股量化分析终端 Vercel 静态入口页",
+  "scripts": {
+    "build": "echo 'Static site ready'",
+    "start": "python3 -m http.server 3000"
+  }
+}

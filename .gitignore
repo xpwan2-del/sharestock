@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+*.secret
+*secret*
+*token*
+*password*
+
+# Local data and caches
+data_cache/
+.cache/
+*.pkl
+*.pickle
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Build / deploy local state
+.vercel/
+node_modules/
+dist/
+build/
+
+# Temporary test artifacts
+.tmp*.py
+.tmp*/

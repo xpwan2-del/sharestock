@@ -1,0 +1,86 @@
+version: "3.8"
+
+# ============================================================
+# A股量化分析系统 - 数据库基础设施
+# ============================================================
+
+services:
+  # ---- PostgreSQL 16: 元数据/业务数据 ----
+  postgres:
+    image: postgres:16-alpine
+    container_name: quant-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quant_user
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-quant_postgres_2024}
+      POSTGRES_DB: quant_meta
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/postgresql:/docker-entrypoint-initdb.d  # 首次启动自动执行 DDL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant_user -d quant_meta"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: |
+      -c shared_buffers=1GB
+      -c effective_cache_size=3GB
+      -c maintenance_work_mem=256MB
+      -c wal_buffers=16MB
+      -c max_wal_size=2GB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=32MB
+      -c max_connections=200
+
+  # ---- ClickHouse: 时序数据 ----
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: quant-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-quant_clickhouse_2024}
+      CLICKHOUSE_DB: quant_ts
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_PORT:-9000}:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./sql/clickhouse:/docker-entrypoint-initdb.d  # 首次启动自动执行 DDL
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Redis: 缓存 ----
+  redis:
+    image: redis:7-alpine
+    container_name: quant-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  redis_data:
+    driver: local
