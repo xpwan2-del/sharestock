@@ -30,6 +30,7 @@ from dashboard.components.trend_reversal import render_trend_reversal
 from dashboard.components.dragon_tiger import render_dragon_tiger
 from dashboard.components.announcement_scan import render_announcement_scan
 from dashboard.components.neural_analysis import render_neural_analysis
+from dashboard.components.trade_signals import render_trade_signals
 from dashboard.components.daily_report_viewer import render_daily_report_viewer
 from dashboard.utils import SessionCache
 
@@ -65,6 +66,7 @@ def render_sidebar():
                 "📈 市场概览",
                 "🔥 产业链热力图",
                 "👑 龙头识别",
+                "🎯 买卖点胜率",
                 "🔄 趋势逆转",
                 "🐉 龙虎榜分析",
                 "📋 公告扫描",
@@ -138,6 +140,8 @@ def main():
         render_industry_heatmap(st.session_state.cache)
     elif "龙头识别" in page:
         render_leader_display(st.session_state.cache)
+    elif "买卖点胜率" in page:
+        render_trade_signals(st.session_state.cache)
     elif "趋势逆转" in page:
         render_trend_reversal(st.session_state.cache)
     elif "龙虎榜分析" in page:
