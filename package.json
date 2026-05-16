@@ -4,7 +4,7 @@
   "private": true,
   "description": "TopLenged A股量化分析终端 Vercel 静态入口页",
   "scripts": {
-    "build": "echo 'Static site ready'",
+    "build": "mkdir -p public && cp index.html public/",
     "start": "python3 -m http.server 3000"
   }
 }
