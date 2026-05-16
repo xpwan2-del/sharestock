@@ -64,7 +64,7 @@ def render_trend_reversal(cache):
             lookback = st.selectbox("回看天数", options=[30, 60, 90, 120], index=1)
 
     # 执行扫描
-    if st.button("🔍 开始扫描趋势逆转", type="primary", width="stretch"):
+    if st.button("🔍 开始扫描趋势逆转", type="primary", use_container_width=True):
         if scan_mode == "单股深度扫描":
             if search_code:
                 _deep_scan_single_stock(search_code)
@@ -267,7 +267,7 @@ def _display_reversal_results(results: List[Dict]):
     # 应用条件格式
     st.dataframe(
         df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         height=min(400, 35 * len(df) + 38),
         column_config={
@@ -309,7 +309,7 @@ def _display_reversal_results(results: List[Dict]):
             showlegend=False,
             yaxis=dict(autorange="reversed"),
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     # 点击查看详情
     if len(df) > 0:
@@ -370,7 +370,7 @@ def _plot_kline_with_signals(code: str, name: str):
         template="plotly_white",
     )
 
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # MACD 图表
     if "macd" in recent.columns:
@@ -402,7 +402,7 @@ def _plot_kline_with_signals(code: str, name: str):
             margin=dict(l=20, r=20, t=40, b=20),
             template="plotly_white",
         )
-        st.plotly_chart(fig_macd, width="stretch")
+        st.plotly_chart(fig_macd, use_container_width=True)
 
 
 def _show_reversal_methodology():

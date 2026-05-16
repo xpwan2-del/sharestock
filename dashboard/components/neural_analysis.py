@@ -325,7 +325,7 @@ def _render_correlation_heatmap(quotes: pd.DataFrame, cache):
         margin=dict(l=80, r=40, t=50, b=100),
     )
     _apply_dark_theme(fig)
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # 高关联股票对
     st.markdown("####  高关联股票对 (相似度 Top 15)")
@@ -654,7 +654,7 @@ def _render_influence_network(
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
     )
     _apply_dark_theme(fig)
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # 影响力统计
     _render_influence_stats(influence_metrics, betweenness)
@@ -869,7 +869,7 @@ def _render_market_clustering(quotes: pd.DataFrame, cache):
     )
     _apply_dark_theme(fig)
     fig.update_coloraxes(colorscale=GRADIENT_COLORMAPS["cluster_spectral"])
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # 簇统计
     _render_cluster_stats(cluster_result.get("cluster_stats", []))
@@ -1022,7 +1022,7 @@ def _render_factor_importance(quotes: pd.DataFrame, cache):
         yaxis=dict(autorange="reversed"),
     )
     _apply_dark_theme(fig)
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # ===== 雷达图 (多维度因子对比) =====
     st.markdown("####  因子雷达图 (Top 6 因子多维对比)")
@@ -1079,7 +1079,7 @@ def _render_factor_importance(quotes: pd.DataFrame, cache):
         ),
     )
     _apply_dark_theme(radar_fig)
-    st.plotly_chart(radar_fig, width="stretch")
+    st.plotly_chart(radar_fig, use_container_width=True)
 
     # ===== 神经网络风格连接权重可视化 =====
     st.markdown("####  神经网络连接权重模拟")

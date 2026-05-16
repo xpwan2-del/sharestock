@@ -48,7 +48,7 @@ def _safe_echarts(options: Dict, height: str, key: str, fallback_df: pd.DataFram
             font={"color": "#e5e7eb"},
             height=int(height.replace("px", "")) if isinstance(height, str) and height.endswith("px") else 320,
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("图表组件未安装，暂无可展示数据")
 
@@ -584,7 +584,7 @@ def _render_sentiment_dashboard(score: float, breadth: Dict,
         advice = "市场恐慌，存在超跌机会"
 
     fig = _build_gauge_chart(score, f"市场情绪: {level}")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     st.markdown(f'<div class="terminal-advice"><b>操作建议</b>: {advice}</div>', unsafe_allow_html=True)
 
@@ -829,7 +829,7 @@ def _render_top_turnover(quotes: pd.DataFrame):
 
     st.dataframe(
         display_df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         height=400,
     )

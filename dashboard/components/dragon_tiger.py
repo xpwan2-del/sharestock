@@ -41,7 +41,7 @@ def render_dragon_tiger(cache):
 
     with col_date2:
         st.markdown("<br>", unsafe_allow_html=True)  # 对齐
-        analyze_btn = st.button("🔍 分析", type="primary", width="stretch")
+        analyze_btn = st.button("🔍 分析", type="primary", use_container_width=True)
 
     if analyze_btn or st.session_state.get("_dt_analyzed_date") == date_input:
         st.session_state._dt_analyzed_date = date_input
@@ -205,7 +205,7 @@ def _render_seat_analysis(dt_data: pd.DataFrame):
     if buy_col is None:
         seat_counts = dt_data.groupby(seat_col).size().reset_index(name="上榜次数")
         seat_counts = seat_counts.sort_values("上榜次数", ascending=False)
-        st.dataframe(seat_counts.head(20), width="stretch", hide_index=True)
+        st.dataframe(seat_counts.head(20), use_container_width=True, hide_index=True)
         return
 
     seat_stats = dt_data.groupby(seat_col).agg(
@@ -234,7 +234,7 @@ def _render_seat_analysis(dt_data: pd.DataFrame):
 
     st.dataframe(
         seat_stats.head(30),
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         height=500,
     )
@@ -263,14 +263,14 @@ def _render_seat_analysis(dt_data: pd.DataFrame):
     with col_a:
         st.markdown("**机构席位**")
         if not inst_seats.empty:
-            st.dataframe(inst_seats, width="stretch", hide_index=True, height=250)
+            st.dataframe(inst_seats, use_container_width=True, hide_index=True, height=250)
         else:
             st.info("暂无机构席位上榜")
 
     with col_b:
         st.markdown("**游资席位**")
         if not venture_seats.empty:
-            st.dataframe(venture_seats, width="stretch", hide_index=True, height=250)
+            st.dataframe(venture_seats, use_container_width=True, hide_index=True, height=250)
         else:
             st.info("暂无游资席位上榜")
 
@@ -342,7 +342,7 @@ def _render_institution_flow(dt_data: pd.DataFrame, cache, date: str):
                 height=300,
                 margin=dict(l=20, r=20, t=40, b=20),
             )
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("暂无北向资金数据")
 
@@ -382,7 +382,7 @@ def _render_insider_trading(cache, date: str):
         if display_cols:
             st.dataframe(
                 insider[display_cols].head(30),
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
                 height=400,
             )

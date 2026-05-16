@@ -84,13 +84,13 @@ def render_sidebar():
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 刷新", width="stretch"):
+            if st.button("🔄 刷新", use_container_width=True):
                 st.session_state.cache.clear()
                 st.session_state.refreshed_at = datetime.now()
                 st.rerun()
 
         with col2:
-            if st.button("🗑️ 清理", width="stretch"):
+            if st.button("🗑️ 清理", use_container_width=True):
                 st.session_state.cache.clear()
                 st.rerun()
 

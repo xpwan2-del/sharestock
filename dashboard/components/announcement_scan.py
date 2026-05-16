@@ -77,7 +77,7 @@ def _auto_scan_mode(cache):
         display_df["成交额"] = display_df["amount"].apply(format_amount)
         display_df.drop(columns=["amount"], inplace=True)
 
-    st.dataframe(display_df, width="stretch", hide_index=True, height=300)
+    st.dataframe(display_df, use_container_width=True, hide_index=True, height=300)
 
     # 手动选择扫描范围
     codes = high_attention["code"].tolist()
@@ -87,7 +87,7 @@ def _auto_scan_mode(cache):
         default=codes[:20],
     )
 
-    if st.button("🔍 开始扫描公告", type="primary", width="stretch"):
+    if st.button("🔍 开始扫描公告", type="primary", use_container_width=True):
         if selected_codes:
             _scan_and_display_announcements(cache, selected_codes, quotes)
         else:
@@ -104,7 +104,7 @@ def _manual_scan_mode(cache):
         height=120,
     )
 
-    if st.button("🔍 开始扫描公告", type="primary", width="stretch"):
+    if st.button("🔍 开始扫描公告", type="primary", use_container_width=True):
         codes = _parse_stock_codes(code_input)
         if codes:
             quotes = cache.get("quotes", _load_realtime_quotes)
@@ -139,7 +139,7 @@ def _batch_import_mode(cache):
 
             st.success(f"成功导入 {len(codes)} 只股票")
 
-            if st.button("🔍 开始扫描公告", type="primary", width="stretch"):
+            if st.button("🔍 开始扫描公告", type="primary", use_container_width=True):
                 quotes = cache.get("quotes", _load_realtime_quotes)
                 _scan_and_display_announcements(cache, codes, quotes)
         except Exception as e:
@@ -322,7 +322,7 @@ def _scan_and_display_announcements(cache, codes: List[str],
 
     st.dataframe(
         styled_df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         height=min(500, 35 * len(df) + 38),
     )
@@ -346,7 +346,7 @@ def _scan_and_display_announcements(cache, codes: List[str],
             height=300,
             margin=dict(l=20, r=20, t=40, b=20),
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     with col_chart2:
         # 公告类型分布
@@ -363,7 +363,7 @@ def _scan_and_display_announcements(cache, codes: List[str],
             height=300,
             margin=dict(l=20, r=20, t=40, b=20),
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     # 公告详情展开
     with st.expander("查看所有公告详情"):

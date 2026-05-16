@@ -62,7 +62,7 @@ def render_leader_display(cache):
         return
 
     # 分析按钮
-    if st.button("🔍 分析龙头", type="primary", width="stretch"):
+    if st.button("🔍 分析龙头", type="primary", use_container_width=True):
         with st.spinner("正在识别龙头..."):
             for concept in selected_concepts:
                 _analyze_and_display_leaders(concept, quotes, limit_up_pool)
@@ -308,7 +308,7 @@ def _display_concept_limit_up(concept_stocks: pd.DataFrame,
         matched = limit_up_pool[limit_up_pool[limit_code_col].isin(intersection)]
         display_cols = [c for c in [limit_code_col, "名称", "name", "连板数", "封单资金", "首次封板时间"] if c in matched.columns]
         if display_cols:
-            st.dataframe(matched[display_cols], width="stretch", hide_index=True)
+            st.dataframe(matched[display_cols], use_container_width=True, hide_index=True)
 
 
 def _show_leader_explanation():

@@ -71,7 +71,7 @@ def _render_concept_heatmap(concept_board: pd.DataFrame):
 
     if pct_col is None or name_col is None:
         st.warning("板块数据格式不匹配")
-        st.dataframe(concept_board.head(20), width="stretch")
+        st.dataframe(concept_board.head(20), use_container_width=True)
         return
 
     # 排序取 Top 50
@@ -126,7 +126,7 @@ def _render_concept_heatmap(concept_board: pd.DataFrame):
         height=600,
         margin=dict(l=10, r=10, t=40, b=10),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # 涨跌 Top 10 并列展示
     st.markdown("### 涨幅 / 跌幅 Top 10")
@@ -140,14 +140,14 @@ def _render_concept_heatmap(concept_board: pd.DataFrame):
         display_up = top10_up[[name_col, pct_col]].copy()
         display_up.columns = ["板块", "涨跌幅(%)"]
         display_up["涨跌幅(%)"] = display_up["涨跌幅(%)"].apply(lambda x: f"+{x:.2f}%" if x >= 0 else f"{x:.2f}%")
-        st.dataframe(display_up, width="stretch", hide_index=True, height=350)
+        st.dataframe(display_up, use_container_width=True, hide_index=True, height=350)
 
     with col_b:
         st.markdown("#### 🟢 跌幅榜")
         display_down = top10_down[[name_col, pct_col]].copy()
         display_down.columns = ["板块", "涨跌幅(%)"]
         display_down["涨跌幅(%)"] = display_down["涨跌幅(%)"].apply(lambda x: f"{x:.2f}%")
-        st.dataframe(display_down, width="stretch", hide_index=True, height=350)
+        st.dataframe(display_down, use_container_width=True, hide_index=True, height=350)
 
 
 def _render_industry_analysis(industry_board: pd.DataFrame, quotes: pd.DataFrame):
@@ -170,7 +170,7 @@ def _render_industry_analysis(industry_board: pd.DataFrame, quotes: pd.DataFrame
 
     if pct_col is None or name_col is None:
         st.warning("行业数据格式不匹配")
-        st.dataframe(industry_board.head(20), width="stretch")
+        st.dataframe(industry_board.head(20), use_container_width=True)
         return
 
     sorted_board = industry_board.sort_values(pct_col, ascending=False)
@@ -203,7 +203,7 @@ def _render_industry_analysis(industry_board: pd.DataFrame, quotes: pd.DataFrame
         showlegend=False,
         yaxis=dict(autorange="reversed"),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_chain_panorama(concept_board: pd.DataFrame, limit_up_pool: pd.DataFrame):
@@ -253,7 +253,7 @@ def _render_chain_panorama(concept_board: pd.DataFrame, limit_up_pool: pd.DataFr
             showlegend=False,
             yaxis=dict(autorange="reversed"),
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         # 展开显示每个产业链的上中下游
         st.markdown("### 产业链细分")
@@ -269,7 +269,7 @@ def _render_chain_panorama(concept_board: pd.DataFrame, limit_up_pool: pd.DataFr
                             "涨停数量": seg["limit_up_count"],
                             "涵盖子行业": "、".join(seg.get("sub_industries", [])[:5]),
                         })
-                    st.dataframe(pd.DataFrame(seg_data), width="stretch", hide_index=True)
+                    st.dataframe(pd.DataFrame(seg_data), use_container_width=True, hide_index=True)
 
     except Exception as e:
         st.error(f"产业链分析失败: {e}")
