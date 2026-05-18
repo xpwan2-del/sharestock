@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from analysis.smart_money_strategies import CUSTOM_FIELD_LABELS, get_builtin_strategy_profiles
+from analysis.smart_money_strategies import CUSTOM_FIELD_LABELS, get_builtin_strategy_name_map, get_builtin_strategy_profiles
 from analysis.trade_signal_engine import TradeSignalEngine
 from data.watchlist_store import WatchlistStore
 from dashboard.components.watchlist_monitor import render_watchlist_monitor
@@ -222,13 +222,8 @@ def _display_performance(result):
         "rsi_rebound_v1": "RSI超卖反弹",
         "breakout_v1": "放量突破",
         "risk_control_v1": "止盈止损",
-        "youzi_first_board_v1": "游资首板启动",
-        "youzi_relay_v1": "游资接力/打板",
-        "weak_to_strong_v1": "弱转强反包",
-        "leader_first_yin_v1": "龙头首阴低吸",
-        "institution_trend_v1": "机构趋势突破",
-        "institution_pullback_v1": "机构缩量回踩",
     }
+    names.update(get_builtin_strategy_name_map())
     for strategy_id, periods in performance.items():
         for days, stat in periods.items():
             rows.append({
@@ -257,7 +252,7 @@ def _signal_label(signal_type):
 
 def _render_strategy_config():
     st.markdown("### 游资/机构内置策略")
-    st.info("系统已把首板、接力、弱转强、龙头首阴、机构趋势突破、机构缩量回踩纳入买卖点和胜率统计。")
+    st.info("系统已把首板、接力、弱转强、龙头首阴、低位主线共振、趋势中军抱团、行业轮动突破、高位风险和退潮防守纳入买卖点和胜率统计。")
     profiles = pd.DataFrame(get_builtin_strategy_profiles())
     if not profiles.empty:
         st.dataframe(profiles.rename(columns={
@@ -279,7 +274,7 @@ def _render_strategy_config():
         with col3:
             signal_type = st.selectbox("信号类型", options=["BUY", "SELL", "TAKE_PROFIT", "STOP_LOSS"], format_func=_signal_label)
         description = st.text_area("策略说明", value="用户自定义条件组合，满足后生成买卖点并统计后续胜率。")
-        st.caption("最多配置3个条件，条件之间为 AND 关系。数值说明：涨跌幅单位是百分数，例如 3 表示涨3%；close_vs_ma20 输入 0.02 表示收盘价高于MA20约2%。")
+        st.caption("最多配置3个条件，条件之间为 AND 关系。数值说明：涨跌幅单位是百分数，例如 3 表示涨3%；close_vs_ma20 输入 0.02 表示收盘价高于MA20约2%；收盘位置越接近1代表越接近日内高点。")
         conditions = []
         fields = list(CUSTOM_FIELD_LABELS.keys())
         operators = [">=", ">", "<=", "<", "=="]
