@@ -10,7 +10,9 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from analysis.smart_money_strategies import CUSTOM_FIELD_LABELS, get_builtin_strategy_profiles
 from analysis.trade_signal_engine import TradeSignalEngine
+from data.watchlist_store import WatchlistStore
 from dashboard.components.watchlist_monitor import render_watchlist_monitor
 from dashboard.utils import _load_realtime_quotes, format_pct
 
@@ -26,13 +28,15 @@ def render_trade_signals(cache):
 
     st.warning("量化买卖点仅为历史数据和规则模型生成的参考信号，不构成投资建议。请结合风险承受能力独立判断。")
 
-    tab_single, tab_market, tab_watchlist = st.tabs(["单股买卖点", "市场信号雷达", "自选股监控"])
+    tab_single, tab_market, tab_watchlist, tab_strategy = st.tabs(["单股买卖点", "市场信号雷达", "自选股监控", "策略配置"])
     with tab_single:
         _render_single_stock(cache)
     with tab_market:
         _render_market_scan(cache)
     with tab_watchlist:
         render_watchlist_monitor(cache)
+    with tab_strategy:
+        _render_strategy_config()
 
 
 def _render_single_stock(cache):
@@ -218,6 +222,12 @@ def _display_performance(result):
         "rsi_rebound_v1": "RSI超卖反弹",
         "breakout_v1": "放量突破",
         "risk_control_v1": "止盈止损",
+        "youzi_first_board_v1": "游资首板启动",
+        "youzi_relay_v1": "游资接力/打板",
+        "weak_to_strong_v1": "弱转强反包",
+        "leader_first_yin_v1": "龙头首阴低吸",
+        "institution_trend_v1": "机构趋势突破",
+        "institution_pullback_v1": "机构缩量回踩",
     }
     for strategy_id, periods in performance.items():
         for days, stat in periods.items():
@@ -243,6 +253,99 @@ def _signal_label(signal_type):
         "TAKE_PROFIT": "止盈提醒",
         "STOP_LOSS": "止损提醒",
     }.get(signal_type, signal_type or "未知")
+
+
+def _render_strategy_config():
+    st.markdown("### 游资/机构内置策略")
+    st.info("系统已把首板、接力、弱转强、龙头首阴、机构趋势突破、机构缩量回踩纳入买卖点和胜率统计。")
+    profiles = pd.DataFrame(get_builtin_strategy_profiles())
+    if not profiles.empty:
+        st.dataframe(profiles.rename(columns={
+            "strategy_id": "策略ID",
+            "name": "策略名称",
+            "style": "资金风格",
+            "description": "识别逻辑",
+            "risk": "风险提示",
+        }), use_container_width=True, hide_index=True)
+
+    st.markdown("### 人工策略配置")
+    store = WatchlistStore()
+    with st.expander("新增 / 更新人工买卖点策略", expanded=True):
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            strategy_id = st.text_input("策略ID", value="custom_volume_breakout", help="用于回测统计的唯一ID，建议英文和下划线")
+        with col2:
+            name = st.text_input("策略名称", value="人工放量突破")
+        with col3:
+            signal_type = st.selectbox("信号类型", options=["BUY", "SELL", "TAKE_PROFIT", "STOP_LOSS"], format_func=_signal_label)
+        description = st.text_area("策略说明", value="用户自定义条件组合，满足后生成买卖点并统计后续胜率。")
+        st.caption("最多配置3个条件，条件之间为 AND 关系。数值说明：涨跌幅单位是百分数，例如 3 表示涨3%；close_vs_ma20 输入 0.02 表示收盘价高于MA20约2%。")
+        conditions = []
+        fields = list(CUSTOM_FIELD_LABELS.keys())
+        operators = [">=", ">", "<=", "<", "=="]
+        defaults = [("pct_chg", ">=", 3.0), ("volume_ratio", ">=", 1.3), ("close_vs_ma20", ">=", 0.0)]
+        for idx in range(3):
+            c1, c2, c3, c4 = st.columns([1.5, 0.8, 1, 0.8])
+            with c1:
+                field = st.selectbox(f"条件{idx + 1}字段", options=fields, index=fields.index(defaults[idx][0]), format_func=lambda x: CUSTOM_FIELD_LABELS.get(x, x), key=f"custom_field_{idx}")
+            with c2:
+                operator = st.selectbox("比较", options=operators, index=operators.index(defaults[idx][1]), key=f"custom_operator_{idx}")
+            with c3:
+                value = st.number_input("阈值", value=float(defaults[idx][2]), step=0.1, key=f"custom_value_{idx}")
+            with c4:
+                enabled = st.checkbox("启用", value=idx < 2, key=f"custom_condition_enabled_{idx}")
+            if enabled:
+                conditions.append({"field": field, "operator": operator, "value": value})
+        r1, r2 = st.columns([1, 2])
+        with r1:
+            strength = st.slider("信号强度", min_value=1, max_value=5, value=3)
+        with r2:
+            risk = st.text_input("风控提示", value="人工策略需结合仓位和止损，避免单一条件误判")
+        enabled_strategy = st.checkbox("策略启用", value=True)
+        if st.button("保存人工策略", type="primary", use_container_width=True):
+            if not conditions:
+                st.warning("至少启用一个条件")
+            else:
+                store.save_custom_strategy(
+                    name=name,
+                    strategy_id=strategy_id.strip(),
+                    signal_type=signal_type,
+                    description=description,
+                    conditions=conditions,
+                    risk_rule={"strength": strength, "risk": risk},
+                    enabled=enabled_strategy,
+                )
+                st.success("人工策略已保存，后续单股分析、市场雷达和自选股监控会自动纳入该策略。")
+
+    strategies = store.list_custom_strategies()
+    st.markdown("### 已保存人工策略")
+    if strategies.empty:
+        st.info("暂无人工策略，可先创建一个放量突破、回踩均线或止损类策略。")
+        return
+    display = strategies.copy()
+    display["enabled"] = display["enabled"].map(lambda x: "启用" if int(x) else "停用")
+    display = display.rename(columns={
+        "strategy_id": "策略ID",
+        "name": "名称",
+        "description": "说明",
+        "signal_type": "信号类型",
+        "enabled": "状态",
+        "conditions_json": "条件",
+        "risk_rule_json": "风控",
+        "updated_at": "更新时间",
+    })
+    st.dataframe(display[["策略ID", "名称", "说明", "信号类型", "状态", "条件", "风控", "更新时间"]], use_container_width=True, hide_index=True)
+    col_enable, col_delete = st.columns([1, 1])
+    selected = st.selectbox("选择要操作的策略", options=strategies["strategy_id"].tolist())
+    with col_enable:
+        if st.button("切换启用/停用", use_container_width=True):
+            row = strategies[strategies["strategy_id"] == selected].iloc[0]
+            store.set_custom_strategy_enabled(selected, not bool(int(row.get("enabled", 1))))
+            st.success("策略状态已更新")
+    with col_delete:
+        if st.button("删除策略", use_container_width=True):
+            store.delete_custom_strategy(selected)
+            st.warning("策略已删除")
 
 
 def _signal_color(signal_type):

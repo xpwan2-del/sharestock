@@ -53,6 +53,22 @@ class WatchlistStore:
                     UNIQUE(user_id, fingerprint)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS custom_strategies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    strategy_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    signal_type TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    conditions_json TEXT NOT NULL,
+                    risk_rule_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(user_id, strategy_id)
+                )
+            """)
             conn.commit()
 
     def list_watchlist(self, user_id: str = "default") -> pd.DataFrame:
@@ -134,6 +150,77 @@ class WatchlistStore:
                 conn.execute("UPDATE alerts SET is_read = 1 WHERE user_id = ? AND id = ?", (user_id, alert_id))
             conn.commit()
 
+    def list_custom_strategies(self, user_id: str = "default", enabled_only: bool = False) -> pd.DataFrame:
+        query = """
+            SELECT id, strategy_id, name, description, signal_type, enabled, conditions_json, risk_rule_json, created_at, updated_at
+            FROM custom_strategies
+            WHERE user_id = ?
+        """
+        params = [user_id]
+        if enabled_only:
+            query += " AND enabled = 1"
+        query += " ORDER BY updated_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        columns = ["id", "strategy_id", "name", "description", "signal_type", "enabled", "conditions_json", "risk_rule_json", "created_at", "updated_at"]
+        return pd.DataFrame([dict(row) for row in rows]) if rows else pd.DataFrame(columns=columns)
+
+    def save_custom_strategy(
+        self,
+        name: str,
+        conditions: List[Dict],
+        signal_type: str = "BUY",
+        description: str = "",
+        risk_rule: Optional[Dict] = None,
+        strategy_id: Optional[str] = None,
+        enabled: bool = True,
+        user_id: str = "default",
+    ):
+        now = datetime.now().isoformat(timespec="seconds")
+        strategy_id = strategy_id or f"custom_{int(datetime.now().timestamp())}"
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO custom_strategies(user_id, strategy_id, name, description, signal_type, enabled, conditions_json, risk_rule_json, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, strategy_id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    signal_type = excluded.signal_type,
+                    enabled = excluded.enabled,
+                    conditions_json = excluded.conditions_json,
+                    risk_rule_json = excluded.risk_rule_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    user_id,
+                    strategy_id,
+                    name.strip() or "人工策略",
+                    description.strip(),
+                    signal_type.strip() or "BUY",
+                    1 if enabled else 0,
+                    json.dumps(conditions, ensure_ascii=False),
+                    json.dumps(risk_rule or {}, ensure_ascii=False),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+
+    def delete_custom_strategy(self, strategy_id: str, user_id: str = "default"):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM custom_strategies WHERE user_id = ? AND strategy_id = ?", (user_id, strategy_id))
+            conn.commit()
+
+    def set_custom_strategy_enabled(self, strategy_id: str, enabled: bool, user_id: str = "default"):
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE custom_strategies SET enabled = ?, updated_at = ? WHERE user_id = ? AND strategy_id = ?",
+                (1 if enabled else 0, now, user_id, strategy_id),
+            )
+            conn.commit()
+
     def unread_count(self, user_id: str = "default") -> int:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE user_id = ? AND is_read = 0", (user_id,)).fetchone()
@@ -143,4 +230,5 @@ class WatchlistStore:
         return json.dumps({
             "watchlist": self.list_watchlist(user_id).to_dict("records"),
             "alerts": self.list_alerts(user_id).to_dict("records"),
+            "custom_strategies": self.list_custom_strategies(user_id).to_dict("records"),
         }, ensure_ascii=False, default=str)

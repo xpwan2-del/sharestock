@@ -7,7 +7,9 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from analysis.smart_money_strategies import generate_custom_strategy_signals, generate_smart_money_signals
 from data.market_data import MarketDataCollector
+from data.watchlist_store import WatchlistStore
 
 
 def _signal_name(signal_type: str) -> str:
@@ -32,8 +34,9 @@ class TradeSignal:
 
 
 class TradeSignalEngine:
-    def __init__(self):
+    def __init__(self, custom_strategies: Optional[List[Dict]] = None):
         self.market = MarketDataCollector()
+        self.custom_strategies = custom_strategies if custom_strategies is not None else self._load_custom_strategies()
 
     def analyze_stock(
         self,
@@ -280,7 +283,20 @@ class TradeSignalEngine:
                 rows.append(self._build_signal(cur, "STOP_LOSS", "risk_control_v1", "风控止损", 5, "跌破20日低点或明显破位", "风险信号优先级高，应避免扩大亏损"))
             if self._is_take_profit(cur):
                 rows.append(self._build_signal(cur, "TAKE_PROFIT", "risk_control_v1", "止盈提醒", 4, "短期涨幅较大且RSI过热，注意止盈保护", "强趋势中可分批止盈而非一次清仓"))
-        return pd.DataFrame([s.__dict__ for s in rows]) if rows else pd.DataFrame()
+        technical = pd.DataFrame([s.__dict__ for s in rows]) if rows else pd.DataFrame()
+        smart_money = generate_smart_money_signals(df)
+        custom = generate_custom_strategy_signals(df, self.custom_strategies)
+        frames = [item for item in [technical, smart_money, custom] if item is not None and not item.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True).sort_values(["date", "strength"], ascending=[True, True]).reset_index(drop=True)
+
+    def _load_custom_strategies(self) -> List[Dict]:
+        try:
+            strategies = WatchlistStore().list_custom_strategies(enabled_only=True)
+            return strategies.to_dict("records") if not strategies.empty else []
+        except Exception:
+            return []
 
     def evaluate_signals(self, df: pd.DataFrame, signals: pd.DataFrame, holding_periods: List[int]) -> pd.DataFrame:
         if signals.empty:
