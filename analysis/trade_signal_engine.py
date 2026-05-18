@@ -10,6 +10,15 @@ import pandas as pd
 from data.market_data import MarketDataCollector
 
 
+def _signal_name(signal_type: str) -> str:
+    return {
+        "BUY": "买入提示",
+        "SELL": "卖出提示",
+        "TAKE_PROFIT": "止盈提醒",
+        "STOP_LOSS": "止损提醒",
+    }.get(signal_type, signal_type or "信号提醒")
+
+
 @dataclass
 class TradeSignal:
     date: pd.Timestamp
@@ -69,6 +78,9 @@ class TradeSignalEngine:
             "latest_signal": latest,
             "latest_buy": latest_buy,
             "latest_sell": latest_sell,
+            "signal_score": self.score_result(current, latest, performance),
+            "action_suggestion": self.suggest_action(current, latest, performance),
+            "risk_level": self.estimate_risk(current, latest),
             "signals": evaluated,
             "performance": performance,
             "data": df,
@@ -97,12 +109,16 @@ class TradeSignalEngine:
                 if signal.get("signal_type") not in ("BUY", "SELL", "TAKE_PROFIT", "STOP_LOSS"):
                     continue
                 stat10 = perf.get(signal.get("strategy_id", ""), {}).get(10, {})
+                score = result.get("signal_score", 0)
                 rows.append({
                     "code": code,
                     "name": name,
                     "signal_type": signal.get("signal_type"),
                     "strategy_name": signal.get("strategy_name"),
                     "strength": signal.get("strength"),
+                    "score": score,
+                    "risk_level": result.get("risk_level"),
+                    "suggestion": result.get("action_suggestion"),
                     "price": signal.get("price"),
                     "date": signal.get("date"),
                     "reason": signal.get("reason"),
@@ -113,7 +129,114 @@ class TradeSignalEngine:
                 })
             except Exception:
                 continue
-        return pd.DataFrame(rows).sort_values(["strength", "win_rate_10d"], ascending=False) if rows else pd.DataFrame()
+        return pd.DataFrame(rows).sort_values(["score", "strength", "win_rate_10d"], ascending=False) if rows else pd.DataFrame()
+
+    def score_result(self, current: pd.Series, latest: Optional[Dict], performance: Dict) -> float:
+        if not latest:
+            return 0.0
+        strength_score = float(latest.get("strength", 1)) * 14
+        trend_score = 10 if current.get("close", 0) > current.get("ma20", np.inf) else -6
+        volume_score = min(max(float(current.get("volume_ratio", 1) or 1) - 1, 0) * 12, 12)
+        stat = performance.get(latest.get("strategy_id", ""), {}).get(10, {})
+        win_rate = stat.get("win_rate")
+        win_score = (float(win_rate) - 0.5) * 50 if win_rate is not None and pd.notna(win_rate) else 0
+        risk_penalty = 10 if latest.get("signal_type") in ("STOP_LOSS", "SELL") else 0
+        score = strength_score + trend_score + volume_score + win_score - risk_penalty
+        return round(float(max(0, min(100, score))), 1)
+
+    def suggest_action(self, current: pd.Series, latest: Optional[Dict], performance: Dict) -> str:
+        if not latest:
+            return "暂无明确买卖点，保持观察"
+        signal_type = latest.get("signal_type")
+        stat = performance.get(latest.get("strategy_id", ""), {}).get(10, {})
+        sample_count = int(stat.get("sample_count") or 0)
+        win_rate = stat.get("win_rate")
+        if signal_type == "BUY":
+            if sample_count >= 10 and win_rate is not None and win_rate >= 0.55:
+                return "出现买入信号且历史胜率偏高，可加入重点观察并等待成交确认"
+            return "出现买入信号，但样本或胜率一般，建议小仓观察"
+        if signal_type == "SELL":
+            return "出现卖出信号，若已持仓建议降低仓位或设置保护止损"
+        if signal_type == "STOP_LOSS":
+            return "出现止损风险，优先控制回撤，避免亏损扩大"
+        if signal_type == "TAKE_PROFIT":
+            return "出现止盈提醒，可考虑分批锁定利润"
+        return "信号偏观察性质，等待更强确认"
+
+    def estimate_risk(self, current: pd.Series, latest: Optional[Dict]) -> str:
+        if latest and latest.get("signal_type") == "STOP_LOSS":
+            return "高"
+        if current.get("close", 0) < current.get("ma20", np.inf):
+            return "中高"
+        if current.get("volatility_20d", 0) > 0.04:
+            return "中"
+        return "低"
+
+    def build_watchlist_snapshot(self, watchlist: pd.DataFrame) -> pd.DataFrame:
+        if watchlist is None or watchlist.empty:
+            return pd.DataFrame()
+        rows = []
+        for _, item in watchlist.iterrows():
+            code = str(item.get("code", "")).zfill(6)
+            name = str(item.get("name", ""))
+            try:
+                result = self.analyze_stock(code, name=name)
+                latest = result.get("latest_signal") or {}
+                stat = result.get("performance", {}).get(latest.get("strategy_id", ""), {}).get(10, {})
+                rows.append({
+                    "code": code,
+                    "name": name,
+                    "group_name": item.get("group_name", "默认"),
+                    "current_price": result.get("current_price"),
+                    "trade_date": result.get("trade_date"),
+                    "signal_type": latest.get("signal_type", "WATCH"),
+                    "strategy_name": latest.get("strategy_name", "暂无强信号"),
+                    "strength": latest.get("strength", 0),
+                    "score": result.get("signal_score", 0),
+                    "risk_level": result.get("risk_level", "未知"),
+                    "suggestion": result.get("action_suggestion", "暂无明确买卖点，保持观察"),
+                    "reason": latest.get("reason", "暂无明确触发原因"),
+                    "win_rate_10d": stat.get("win_rate"),
+                    "avg_return_10d": stat.get("avg_return"),
+                    "sample_count_10d": stat.get("sample_count"),
+                })
+            except Exception as exc:
+                rows.append({
+                    "code": code,
+                    "name": name,
+                    "group_name": item.get("group_name", "默认"),
+                    "signal_type": "ERROR",
+                    "strategy_name": "分析失败",
+                    "strength": 0,
+                    "score": 0,
+                    "risk_level": "未知",
+                    "suggestion": "该股票本次分析失败，稍后重试",
+                    "reason": str(exc)[:120],
+                })
+        return pd.DataFrame(rows).sort_values(["score", "strength"], ascending=False) if rows else pd.DataFrame()
+
+    def build_alerts_from_snapshot(self, snapshot: pd.DataFrame) -> List[Dict]:
+        alerts = []
+        if snapshot is None or snapshot.empty:
+            return alerts
+        for _, row in snapshot.iterrows():
+            signal_type = row.get("signal_type")
+            strength = int(row.get("strength") or 0)
+            risk = row.get("risk_level")
+            if signal_type in ("BUY", "SELL", "STOP_LOSS", "TAKE_PROFIT") and (strength >= 4 or risk in ("高", "中高")):
+                severity = "high" if signal_type in ("STOP_LOSS", "SELL") or risk == "高" else "medium"
+                title = f"{row.get('name') or row.get('code')} {_signal_name(signal_type)}"
+                alerts.append({
+                    "code": row.get("code"),
+                    "name": row.get("name"),
+                    "alert_type": signal_type,
+                    "severity": severity,
+                    "title": title,
+                    "content": f"{row.get('strategy_name')}｜强度{strength}/5｜{row.get('suggestion')}｜原因：{row.get('reason')}",
+                    "signal_date": row.get("trade_date"),
+                    "fingerprint": f"{row.get('code')}:{signal_type}:{row.get('trade_date')}",
+                })
+        return alerts
 
     def _prepare_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:

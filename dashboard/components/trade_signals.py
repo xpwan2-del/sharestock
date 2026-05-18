@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.trade_signal_engine import TradeSignalEngine
+from dashboard.components.watchlist_monitor import render_watchlist_monitor
 from dashboard.utils import _load_realtime_quotes, format_pct
 
 
@@ -25,11 +26,13 @@ def render_trade_signals(cache):
 
     st.warning("量化买卖点仅为历史数据和规则模型生成的参考信号，不构成投资建议。请结合风险承受能力独立判断。")
 
-    tab_single, tab_market = st.tabs(["单股买卖点", "市场信号雷达"])
+    tab_single, tab_market, tab_watchlist = st.tabs(["单股买卖点", "市场信号雷达", "自选股监控"])
     with tab_single:
         _render_single_stock(cache)
     with tab_market:
         _render_market_scan(cache)
+    with tab_watchlist:
+        render_watchlist_monitor(cache)
 
 
 def _render_single_stock(cache):
@@ -91,6 +94,9 @@ def _render_market_scan(cache):
             "signal_type": "信号",
             "strategy_name": "策略",
             "strength": "强度",
+            "score": "综合分",
+            "risk_level": "风险",
+            "suggestion": "行动建议",
             "price": "触发价",
             "date": "触发日期",
             "reason": "原因",
