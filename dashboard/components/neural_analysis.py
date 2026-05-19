@@ -1,5 +1,4 @@
-"""
-神经网络分析可视化组件 - 相关性矩阵、产业链网络、市场聚类、因子重要性
+"""市场结构分析可视化组件 - 相关性矩阵、产业链网络、市场聚类、因子驱动解释
 深色主题 · 渐变色 · 交互式悬停
 """
 import streamlit as st
@@ -147,9 +146,9 @@ def render_neural_analysis(cache):
         font-size: 28px;
         font-weight: 800;
         margin-bottom: 4px;
-    ">Neural Analysis</div>
+    ">市场结构分析</div>
     <div style="color: #8B949E; font-size: 13px; margin-bottom: 24px;">
-        神经网络视角下的市场结构分析 · 关联网络 · 因子解构 · 状态聚类
+        用行情特征解释市场共振、资金扩散、风险聚集和关键驱动因子 · 不是黑盒预测
     </div>
     """, unsafe_allow_html=True)
 
@@ -161,25 +160,21 @@ def render_neural_analysis(cache):
 
     # ---------- 指标概览 ----------
     _render_network_metrics(quotes, concept_board, limit_up_pool)
+    _render_market_structure_summary(quotes, concept_board, limit_up_pool)
 
-    # ---------- Tab 导航 ----------
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "  热力图相关性矩阵  ",
-        "  产业链影响力网络  ",
-        "  市场状态聚类  ",
-        "  因子重要性  ",
-    ])
+    analysis_type = st.radio(
+        "选择要查看的分析",
+        ["相关性矩阵", "产业链影响力", "市场状态分层", "因子驱动解释"],
+        horizontal=True,
+    )
 
-    with tab1:
+    if analysis_type == "相关性矩阵":
         _render_correlation_heatmap(quotes, cache)
-
-    with tab2:
+    elif analysis_type == "产业链影响力":
         _render_influence_network(concept_board, limit_up_pool, cache)
-
-    with tab3:
+    elif analysis_type == "市场状态分层":
         _render_market_clustering(quotes, cache)
-
-    with tab4:
+    else:
         _render_factor_importance(quotes, cache)
 
 
@@ -255,6 +250,63 @@ def _render_network_metrics(
 # Tab 1: 股票关联热力图 (相关性矩阵)
 # ================================================================
 
+def _render_market_structure_summary(
+    quotes: pd.DataFrame,
+    concept_board: pd.DataFrame,
+    limit_up_pool: pd.DataFrame,
+):
+    if quotes is None or quotes.empty:
+        st.info("暂无行情数据，无法生成市场结构结论。")
+        return
+    q = quotes.copy()
+    pct = pd.to_numeric(q.get("pct_chg", pd.Series(dtype="float")), errors="coerce")
+    amount = pd.to_numeric(q.get("amount", pd.Series(dtype="float")), errors="coerce")
+    volume_ratio = pd.to_numeric(q.get("volume_ratio", pd.Series(dtype="float")), errors="coerce")
+    up_ratio = float((pct > 0).mean()) if len(pct.dropna()) else 0
+    strong_ratio = float((pct >= 3).mean()) if len(pct.dropna()) else 0
+    weak_ratio = float((pct <= -3).mean()) if len(pct.dropna()) else 0
+    avg_volume_ratio = float(volume_ratio.dropna().mean()) if len(volume_ratio.dropna()) else 1
+    limit_count = len(limit_up_pool) if limit_up_pool is not None else 0
+    top_concepts = []
+    if concept_board is not None and not concept_board.empty:
+        board = concept_board.copy()
+        if "涨跌幅" in board.columns:
+            board["涨跌幅"] = pd.to_numeric(board["涨跌幅"], errors="coerce")
+            name_col = "板块名称" if "板块名称" in board.columns else board.columns[0]
+            top_concepts = board.nlargest(3, "涨跌幅")[name_col].astype(str).tolist()
+        elif "pct_chg" in board.columns:
+            board["pct_chg"] = pd.to_numeric(board["pct_chg"], errors="coerce")
+            name_col = "name" if "name" in board.columns else board.columns[0]
+            top_concepts = board.nlargest(3, "pct_chg")[name_col].astype(str).tolist()
+    if up_ratio >= 0.62 and strong_ratio >= 0.08:
+        state = "资金扩散偏强"
+        action = "可以重点看主线内强势股和回踩确认机会，但避免无脑追高。"
+        risk = "若涨停数下降或高位股回落，容易从扩散转为分歧。"
+    elif weak_ratio >= 0.08 or up_ratio <= 0.38:
+        state = "风险收缩偏弱"
+        action = "优先控制仓位，关注防守、超跌修复和趋势未破位的核心股。"
+        risk = "弱势环境下买点胜率会下降，短线接力要降低预期。"
+    elif avg_volume_ratio >= 1.25:
+        state = "高波动轮动"
+        action = "适合观察板块轮动和资金突然放大的方向，买点要等确认。"
+        risk = "轮动快时容易冲高回落，不能只看红色热力。"
+    else:
+        state = "震荡均衡"
+        action = "优先做有趋势、有业绩或有明确主线的股票，减少随机交易。"
+        risk = "震荡市信号容易反复，需要结合止损和仓位管理。"
+    strongest = "、".join(top_concepts) if top_concepts else "暂无明确板块"
+    st.markdown("### 今日市场结构结论")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("市场状态", state)
+    c2.metric("上涨占比", f"{up_ratio:.1%}")
+    c3.metric("强势股占比", f"{strong_ratio:.1%}")
+    c4.metric("涨停样本", f"{limit_count}只")
+    st.success(f"当前最值得关注的是：{strongest}。{action}")
+    st.warning(f"风险提醒：{risk}")
+    st.caption("说明：本页不是预测明天涨跌，而是把实时行情特征翻译成市场结构、资金共振和风险集中度，帮助判断哪些信号更可信。")
+
+
+
 def _render_correlation_heatmap(quotes: pd.DataFrame, cache):
     """渲染股票相关性热力图"""
     st.markdown("""
@@ -265,7 +317,8 @@ def _render_correlation_heatmap(quotes: pd.DataFrame, cache):
     </div>
     """, unsafe_allow_html=True)
 
-    st.caption("展示成交额 Top 30 股票在特征空间中的相似度。颜色越接近深红/深蓝，关联性越强。")
+    st.info("怎么看：颜色越接近红色，说明这些股票在涨跌幅、振幅、换手、量比等特征上越相似，后续可能同涨同跌；不是越红越可以买。")
+    st.caption("怎么用：高相似股票适合做板块共振和风险传导观察，如果一组高相似强势股同时转弱，要警惕共振回撤。")
 
     if quotes is None or quotes.empty:
         st.warning("暂无行情数据，无法构建相关性矩阵")
@@ -413,6 +466,8 @@ def _render_influence_network(
     """, unsafe_allow_html=True)
 
     st.caption("节点大小 = 影响力权重，边 = 上下游传播关系。悬停查看详细指标。")
+    st.info("怎么看：节点越大代表该产业环节影响力越强，颜色越红代表当前表现越强；处在多条路径中间的节点，往往是资金扩散枢纽。")
+    st.caption("怎么用：如果涨停池和强势概念集中在同一产业链，说明主线更清晰；如果节点很多但分散，说明轮动快、追涨风险高。")
 
     try:
         from analysis.correlation_network import CorrelationNetworkAnalyzer
@@ -772,6 +827,9 @@ def _render_market_clustering(quotes: pd.DataFrame, cache):
         st.warning("暂无行情数据")
         return
 
+    st.info("怎么看：同一颜色/簇里的股票，代表当天涨跌幅、换手、振幅、量比等特征相似。它不是预测，而是告诉你市场资金正在把股票分成哪些类型。")
+    st.caption("怎么用：强势放量簇适合观察主线扩散，低波动簇偏防守，高波动下跌簇要回避；不要只因为某个点在红色区域就买入。")
+
     # 聚类数选择
     n_clusters = st.slider(
         "聚类簇数",
@@ -805,7 +863,7 @@ def _render_market_clustering(quotes: pd.DataFrame, cache):
         if not mask.any():
             continue
 
-        cluster_name = CLUSTER_NAMES.get(i, f"簇 {i + 1}")
+        cluster_name = _describe_cluster(cluster_result.get("cluster_stats", []), i)
 
         # 网格线增强效果
         fig.add_trace(go.Scatter(
@@ -837,7 +895,7 @@ def _render_market_clustering(quotes: pd.DataFrame, cache):
         x=cluster_result["centroids_x"],
         y=cluster_result["centroids_y"],
         mode="markers+text",
-        text=[CLUSTER_NAMES.get(i, f"C{i}") for i in range(cluster_result["n_clusters"])],
+        text=[_describe_cluster(cluster_result.get("cluster_stats", []), i) for i in range(cluster_result["n_clusters"])],
         textposition="top center",
         textfont=dict(color="#FFFFFF", size=11, family="Arial Black"),
         marker=dict(
@@ -896,7 +954,7 @@ def _render_cluster_stats(cluster_stats: List[Dict]):
 
     for i, (stat, col) in enumerate(zip(cluster_stats, cols * 2)):
         color = cluster_colors[i % len(cluster_colors)]
-        cluster_name = CLUSTER_NAMES.get(stat["cluster_id"], f"簇 {stat['cluster_id'] + 1}")
+        cluster_name = _describe_cluster(cluster_stats, stat["cluster_id"])
         avg_pct = stat.get("avg_pct", 0)
         pct_color = DARK_THEME["danger"] if avg_pct > 0 else DARK_THEME["secondary"]
 
@@ -934,17 +992,40 @@ def _render_cluster_stats(cluster_stats: List[Dict]):
 # Tab 4: 因子重要性条形图 (神经网络权重可视化)
 # ================================================================
 
+def _describe_cluster(cluster_stats: list, cluster_id: int) -> str:
+    stat = next((item for item in cluster_stats if item.get("cluster_id") == cluster_id), {})
+    avg_pct = float(stat.get("avg_pct", 0) or 0)
+    avg_turnover = float(stat.get("avg_turnover", 0) or 0)
+    avg_amplitude = float(stat.get("avg_amplitude", 0) or 0)
+    size = int(stat.get("size", 0) or 0)
+    if avg_pct >= 3 and avg_turnover >= 6:
+        return "强势放量活跃"
+    if avg_pct >= 1.2 and avg_amplitude <= 5:
+        return "温和趋势上行"
+    if avg_pct <= -2 and avg_amplitude >= 4:
+        return "高波动下跌"
+    if avg_turnover <= 2.5 and avg_amplitude <= 3.5:
+        return "低波动防守"
+    if avg_amplitude >= 6 and abs(avg_pct) < 2:
+        return "剧烈分歧震荡"
+    if size >= 80 and abs(avg_pct) < 1:
+        return "中性横盘群体"
+    return f"结构簇 {cluster_id + 1}"
+
+
+
 def _render_factor_importance(quotes: pd.DataFrame, cache):
     """渲染因子重要性条形图"""
     st.markdown("""
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
         <span style="color: #FFA657; font-size: 18px;">&#9889;</span>
-        <span style="color: #C9D1D9; font-weight: 600;">因子重要性分析</span>
+        <span style="color: #C9D1D9; font-weight: 600;">因子驱动解释</span>
         <span style="color: #8B949E; font-size: 12px;">— 方差贡献 · 涨跌幅相关 · 信息比率</span>
     </div>
     """, unsafe_allow_html=True)
 
-    st.caption("模拟神经网络权重分析：结合特征方差、与涨跌幅相关性、信息比率计算因子重要性。")
+    st.info("怎么看：这里展示当前市场分化主要由哪些因子解释，比如量比、换手、振幅、涨跌幅。它不是黑盒模型真实权重，而是行情横截面的因子驱动解释。")
+    st.caption("怎么用：如果量比和换手重要性高，说明短线资金主导；如果波动因子重要性高，说明风险和分歧加大；如果涨跌幅因子高，说明趋势动量更强。")
 
     if quotes is None or quotes.empty:
         st.warning("暂无行情数据")
@@ -1012,7 +1093,7 @@ def _render_factor_importance(quotes: pd.DataFrame, cache):
 
     fig.update_layout(
         title=dict(
-            text="因子重要性排行 (神经网络权重视角)",
+            text="因子驱动解释：当前市场由哪些特征主导",
             font=dict(color=DARK_THEME["font_color"], size=15),
         ),
         xaxis_title="归一化重要性 (%)",
@@ -1081,8 +1162,8 @@ def _render_factor_importance(quotes: pd.DataFrame, cache):
     _apply_dark_theme(radar_fig)
     st.plotly_chart(radar_fig, use_container_width=True)
 
-    # ===== 神经网络风格连接权重可视化 =====
-    st.markdown("####  神经网络连接权重模拟")
+    # ===== 因子影响强度模拟 =====
+    st.markdown("####  因子影响强度模拟")
     _render_neural_connection_weights(importance_df)
 
 

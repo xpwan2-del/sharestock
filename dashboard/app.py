@@ -22,16 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 导入各组件模块
-from dashboard.components.market_overview import render_market_overview
-from dashboard.components.industry_heatmap import render_industry_heatmap
-from dashboard.components.leader_display import render_leader_display
-from dashboard.components.trend_reversal import render_trend_reversal
-from dashboard.components.dragon_tiger import render_dragon_tiger
-from dashboard.components.announcement_scan import render_announcement_scan
-from dashboard.components.neural_analysis import render_neural_analysis
-from dashboard.components.trade_signals import render_trade_signals
-from dashboard.components.daily_report_viewer import render_daily_report_viewer
 from dashboard.utils import SessionCache
 
 # ---------- 自定义 CSS ----------
@@ -133,24 +123,33 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # 路由到对应模块
+    # 路由到对应模块，按需导入可以避免启动时加载所有重型依赖
     if "市场概览" in page:
+        from dashboard.components.market_overview import render_market_overview
         render_market_overview(st.session_state.cache)
     elif "产业链热力图" in page:
+        from dashboard.components.industry_heatmap import render_industry_heatmap
         render_industry_heatmap(st.session_state.cache)
     elif "龙头识别" in page:
+        from dashboard.components.leader_display import render_leader_display
         render_leader_display(st.session_state.cache)
     elif "买卖点胜率" in page:
+        from dashboard.components.trade_signals import render_trade_signals
         render_trade_signals(st.session_state.cache)
     elif "趋势逆转" in page:
+        from dashboard.components.trend_reversal import render_trend_reversal
         render_trend_reversal(st.session_state.cache)
     elif "龙虎榜分析" in page:
+        from dashboard.components.dragon_tiger import render_dragon_tiger
         render_dragon_tiger(st.session_state.cache)
     elif "公告扫描" in page:
+        from dashboard.components.announcement_scan import render_announcement_scan
         render_announcement_scan(st.session_state.cache)
     elif "每日报告" in page:
+        from dashboard.components.daily_report_viewer import render_daily_report_viewer
         render_daily_report_viewer(st.session_state.cache)
     elif "神经网络分析" in page:
+        from dashboard.components.neural_analysis import render_neural_analysis
         render_neural_analysis(st.session_state.cache)
 
 

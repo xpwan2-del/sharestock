@@ -350,6 +350,14 @@ class MarketDataCollector:
     @retry_on_disconnect(max_retries=2, base_delay=3.0)
     def get_realtime_quotes(self, symbols: Optional[List[str]] = None) -> pd.DataFrame:
         stale = self._load_stale_cache("get_realtime_quotes")
+        if stale is not None and not stale.empty and not symbols:
+            try:
+                age = (datetime.now() - datetime.fromtimestamp(self._cache_file_path("get_realtime_quotes").stat().st_mtime)).total_seconds()
+                if age <= 600:
+                    logger.info(f"实时行情优先使用近10分钟缓存: {len(stale)} 只")
+                    return stale
+            except Exception:
+                pass
         tencent_df = self._load_tencent_realtime(symbols=symbols)
         if tencent_df is not None and not tencent_df.empty:
             if not self._is_realtime_fresh(tencent_df) and not symbols:

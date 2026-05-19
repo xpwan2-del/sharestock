@@ -20,7 +20,7 @@ from utils.redis_manager import get_redis_manager
 
 # ---------- 数据加载器单例 ----------
 
-@disk_cache(ttl_hours=0.033)
+@disk_cache(ttl_hours=0.083)
 def _load_market_breadth() -> Dict:
     """加载市场宽度数据（带缓存）"""
     from data.market_data import MarketDataCollector
@@ -28,7 +28,7 @@ def _load_market_breadth() -> Dict:
     return mc.get_market_breadth()
 
 
-@disk_cache(ttl_hours=0.033)
+@disk_cache(ttl_hours=0.083)
 def _load_realtime_quotes() -> pd.DataFrame:
     """加载实时行情数据（直接走统一数据网关，避免Redis KEYS全量扫描）"""
     from data.market_data import MarketDataCollector
@@ -44,7 +44,7 @@ def _load_limit_up_pool() -> pd.DataFrame:
     return mc.get_limit_up_pool()
 
 
-@disk_cache(ttl_hours=0.25)
+@disk_cache(ttl_hours=0.5)
 def _load_concept_board() -> pd.DataFrame:
     """加载概念板块行情（带缓存）"""
     from data.market_data import MarketDataCollector
