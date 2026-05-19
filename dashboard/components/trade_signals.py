@@ -312,8 +312,8 @@ def _signal_label(signal_type):
 
 
 def _render_strategy_config():
-    st.markdown("### 游资/机构内置策略")
-    st.info("系统已把首板、接力、弱转强、龙头首阴、低位主线共振、趋势中军抱团、行业轮动突破、高位风险和退潮防守纳入买卖点和胜率统计。")
+    st.markdown("### 游资/机构/量化内置策略")
+    st.info("系统已把首板、接力、弱转强、龙头首阴、情绪修复、量化动量、机构游资合力、箱体突破回踩、主线趋势波段、超跌均值回归、顶部背离、趋势破位等策略纳入买卖点和胜率统计。")
     profiles = pd.DataFrame(get_builtin_strategy_profiles())
     if not profiles.empty:
         st.dataframe(profiles.rename(columns={

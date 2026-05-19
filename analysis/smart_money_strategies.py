@@ -105,6 +105,69 @@ BUILTIN_STRATEGY_PROFILES = [
         "description": "识别连续强势后转弱、跌破均线、动量衰减的短线退潮信号。",
         "risk": "退潮期减少接力和打板，优先控制回撤。",
     },
+    {
+        "strategy_id": "emotion_repair_confirm_v1",
+        "name": "情绪修复确认",
+        "style": "短线情绪修复",
+        "description": "识别连续调整后重新放量收强、收盘位置较高的修复确认信号，适合冰点后观察。",
+        "risk": "修复行情容易一日游，若次日不能延续强承接，应降低短线预期。",
+    },
+    {
+        "strategy_id": "quant_momentum_open_v1",
+        "name": "量化动量早强",
+        "style": "量化动量/强势确认",
+        "description": "用日线代理早盘强势确认，识别跳空、放量、收盘强且短期不过热的动量信号。",
+        "risk": "量化动量信号衰减快，冲高回落或量能失控时不能追涨。",
+    },
+    {
+        "strategy_id": "hot_money_one_day_risk_v1",
+        "name": "游资一日游风险",
+        "style": "游资兑现风险",
+        "description": "识别首板或强势日后次日缩量/放量走弱、低收盘位置等一日游风险。",
+        "risk": "此类风险信号出现时，不宜继续按接力逻辑处理。",
+    },
+    {
+        "strategy_id": "institution_hot_money_combo_v1",
+        "name": "机构游资合力",
+        "style": "机构+游资共振",
+        "description": "识别中期趋势良好、低位不高、突然放量强攻的机构趋势和短线资金合力信号。",
+        "risk": "合力信号需要次日承接确认，若高开低走说明合力失败。",
+    },
+    {
+        "strategy_id": "box_breakout_pullback_v1",
+        "name": "箱体突破回踩",
+        "style": "趋势突破回踩",
+        "description": "识别突破平台后回踩不破、缩量企稳的二次买点，偏右侧确认。",
+        "risk": "若回踩跌回箱体内部，突破逻辑失败。",
+    },
+    {
+        "strategy_id": "swing_trend_band_v1",
+        "name": "主线趋势波段",
+        "style": "趋势波段",
+        "description": "识别中期多头、回撤可控、量能健康的趋势波段持有/加仓信号。",
+        "risk": "趋势波段不适合追加速，跌破20日或60日均线要降级。",
+    },
+    {
+        "strategy_id": "mean_reversion_oversold_v1",
+        "name": "超跌均值回归",
+        "style": "量化反转",
+        "description": "识别连续下跌、RSI低位、偏离均线过大的超跌反弹机会。",
+        "risk": "弱势股超跌后可能继续阴跌，只适合小仓试错并严格止损。",
+    },
+    {
+        "strategy_id": "top_divergence_exit_v1",
+        "name": "顶部背离减仓",
+        "style": "趋势卖点/风控",
+        "description": "识别创新高或高位大涨后量价、RSI、MACD动能背离的减仓信号。",
+        "risk": "顶部背离不一定马上下跌，但应降低追涨和满仓风险。",
+    },
+    {
+        "strategy_id": "trend_breakdown_exit_v1",
+        "name": "趋势破位离场",
+        "style": "趋势止损/风控",
+        "description": "识别放量跌破关键均线或平台支撑的趋势离场信号。",
+        "risk": "趋势破位后先保护本金，等待重新站回关键均线再评估。",
+    },
 ]
 
 
@@ -164,6 +227,15 @@ def generate_smart_money_signals(df: pd.DataFrame) -> pd.DataFrame:
             _quant_lhasa_risk,
             _high_position_distribution,
             _emotion_retreat_defense,
+            _emotion_repair_confirm,
+            _quant_momentum_open,
+            _hot_money_one_day_risk,
+            _institution_hot_money_combo,
+            _box_breakout_pullback,
+            _swing_trend_band,
+            _mean_reversion_oversold,
+            _top_divergence_exit,
+            _trend_breakdown_exit,
         ]:
             signal = detector(prev, cur, recent)
             if signal:
@@ -222,6 +294,16 @@ def _enrich_frame(df: pd.DataFrame) -> pd.DataFrame:
         data["intraday_range"] = (high - low) / close.replace(0, np.nan)
     if "gap_pct" not in data:
         data["gap_pct"] = open_price / close.shift(1).replace(0, np.nan) - 1
+    if "ma60" not in data:
+        data["ma60"] = close.rolling(60).mean()
+    if "ma60_slope" not in data:
+        data["ma60_slope"] = data["ma60"].diff(10) / data["ma60"].shift(10)
+    if "volatility_10d" not in data:
+        data["volatility_10d"] = close.pct_change().rolling(10).std()
+    if "drawdown_20d" not in data:
+        data["drawdown_20d"] = close / close.rolling(20).max() - 1
+    if "volume_shrink" not in data:
+        data["volume_shrink"] = data.get("volume", pd.Series(dtype="float")) / data.get("volume", pd.Series(dtype="float")).rolling(5).mean()
     return data
 
 
@@ -380,6 +462,149 @@ def _emotion_retreat_defense(prev: pd.Series, cur: pd.Series, recent: pd.DataFra
         strength = 4 + int(close < ma20 or pct <= -6)
         return _build(cur, "STOP_LOSS", "emotion_retreat_defense_v1", "情绪退潮防守", strength, f"连续强势后跌破MA5且放量回落{pct:.1f}%，短线情绪退潮迹象", "退潮期不做接力，优先控制回撤并等待重新转强")
     return None
+
+
+def _emotion_repair_confirm(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    pct = _num(cur, "pct_chg")
+    volume_ratio = _num(cur, "volume_ratio")
+    close_position = _num(cur, "close_position", 0.5)
+    prior = recent.iloc[:-1]
+    down_days = int((prior["pct_chg"] <= -2.5).sum()) if "pct_chg" in prior else 0
+    drawdown = _num(cur, "drawdown_20d")
+    macd_repair = _num(cur, "macd_hist") > _num(prev, "macd_hist")
+    if down_days >= 2 and drawdown <= -0.08 and 2.5 <= pct <= 8 and volume_ratio >= 1.15 and close_position >= 0.65 and macd_repair:
+        strength = 3 + int(pct >= 5 and volume_ratio >= 1.6)
+        return _build(cur, "BUY", "emotion_repair_confirm_v1", "情绪修复确认", strength, f"近20日回撤{drawdown:.1%}后放量收强，涨幅{pct:.1f}%且收盘位置较高，短线情绪修复确认", "修复行情持续性不稳定，次日弱承接或低开低走应降低仓位")
+    return None
+
+
+
+def _quant_momentum_open(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    pct = _num(cur, "pct_chg")
+    gap = _num(cur, "gap_pct")
+    volume_ratio = _num(cur, "volume_ratio")
+    close_position = _num(cur, "close_position", 0.5)
+    ret_20d = _num(cur, "ret_20d")
+    intraday_range = _num(cur, "intraday_range")
+    if 0.01 <= gap <= 0.055 and 3 <= pct <= 8.5 and 1.25 <= volume_ratio <= 2.8 and close_position >= 0.72 and ret_20d <= 0.38 and intraday_range <= 0.095:
+        strength = 4 + int(pct >= 6 and volume_ratio >= 1.8)
+        return _build(cur, "BUY", "quant_momentum_open_v1", "量化动量早强", strength, f"跳空{gap:.1%}后放量收强，涨幅{pct:.1f}%、量比{volume_ratio:.1f}，符合量化动量确认特征", "动量策略衰减快，若次日不能继续强于大盘，应避免追高扩大仓位")
+    return None
+
+
+
+def _hot_money_one_day_risk(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    prev_pct = _num(prev, "pct_chg")
+    pct = _num(cur, "pct_chg")
+    gap = _num(cur, "gap_pct")
+    volume_ratio = _num(cur, "volume_ratio")
+    close_position = _num(cur, "close_position", 0.5)
+    upper_shadow = _num(cur, "upper_shadow_ratio")
+    if prev_pct >= 7 and ((gap >= 0.035 and pct <= 1.5 and close_position <= 0.42) or (volume_ratio >= 1.7 and upper_shadow >= 0.035 and close_position <= 0.5)):
+        return _build(cur, "SELL", "hot_money_one_day_risk_v1", "游资一日游风险", 4, f"前日强势{prev_pct:.1f}%后今日承接不足，涨幅{pct:.1f}%、收盘位置{close_position:.0%}，疑似一日游兑现", "首板次日若不能强承接，不应继续按接力处理")
+    return None
+
+
+
+def _institution_hot_money_combo(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    close = _num(cur, "close")
+    ma20 = _num(cur, "ma20", np.inf)
+    ma60 = _num(cur, "ma60", np.inf)
+    slope20 = _num(cur, "ma20_slope")
+    slope60 = _num(cur, "ma60_slope")
+    pct = _num(cur, "pct_chg")
+    ret_20d = _num(cur, "ret_20d")
+    volume_ratio = _num(cur, "volume_ratio")
+    close_position = _num(cur, "close_position", 0.5)
+    trend_ok = close > ma20 > ma60 and slope20 > 0.005 and slope60 >= -0.005
+    if trend_ok and 3.5 <= pct <= 9.2 and 1.4 <= volume_ratio <= 3.0 and 0.02 <= ret_20d <= 0.42 and close_position >= 0.68:
+        strength = 4 + int(pct >= 6 and slope20 >= 0.02)
+        return _build(cur, "BUY", "institution_hot_money_combo_v1", "机构游资合力", strength, f"中期趋势向上且短线放量强攻，20日涨幅{ret_20d:.1%}、量比{volume_ratio:.1f}，偏机构与游资合力", "合力买点需要次日承接确认，高开低走说明短线资金兑现")
+    return None
+
+
+
+def _box_breakout_pullback(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    close = _num(cur, "close")
+    ma20 = _num(cur, "ma20", np.inf)
+    pct = _num(cur, "pct_chg")
+    volume_ratio = _num(cur, "volume_ratio", 1)
+    prior = recent.iloc[:-1]
+    if prior.empty or not {"high", "low", "close"}.issubset(prior.columns):
+        return None
+    box_high = float(prior["high"].tail(15).max())
+    box_low = float(prior["low"].tail(15).min())
+    box_range = box_high / max(box_low, 0.01) - 1
+    had_breakout = bool((prior["close"].tail(5) > box_high * 0.995).any())
+    pullback_hold = close >= box_high * 0.97 and close >= ma20 * 0.99 and -2 <= pct <= 3.5 and volume_ratio <= 1.25
+    if had_breakout and box_range <= 0.28 and pullback_hold:
+        return _build(cur, "BUY", "box_breakout_pullback_v1", "箱体突破回踩", 3, f"近15日箱体振幅{box_range:.1%}，突破后回踩箱体上沿不破且量能收敛，属于二次确认买点", "若跌回箱体内部或放量破位，突破回踩逻辑失效")
+    return None
+
+
+
+def _swing_trend_band(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    close = _num(cur, "close")
+    ma20 = _num(cur, "ma20", np.inf)
+    ma60 = _num(cur, "ma60", np.inf)
+    slope20 = _num(cur, "ma20_slope")
+    ret_20d = _num(cur, "ret_20d")
+    volatility = _num(cur, "volatility_20d")
+    volume_ratio = _num(cur, "volume_ratio", 1)
+    drawdown = _num(cur, "drawdown_20d")
+    trend_days = int((recent["close"] >= recent["ma20"]).sum()) if {"close", "ma20"}.issubset(recent.columns) else 0
+    if close > ma20 > ma60 and slope20 > 0.01 and 0.06 <= ret_20d <= 0.35 and volatility <= 0.04 and -0.08 <= drawdown <= -0.005 and 0.65 <= volume_ratio <= 1.45 and trend_days >= 13:
+        return _build(cur, "BUY", "swing_trend_band_v1", "主线趋势波段", 4, f"中期多头趋势保持，20日涨幅{ret_20d:.1%}、回撤{drawdown:.1%}、波动{volatility:.1%}可控，适合趋势波段跟踪", "趋势波段应避免急涨追高，跌破MA20需降低仓位")
+    return None
+
+
+
+def _mean_reversion_oversold(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    close = _num(cur, "close")
+    ma20 = _num(cur, "ma20", np.inf)
+    rsi = _num(cur, "rsi14", 50)
+    ret_5d = _num(cur, "ret_5d")
+    pct = _num(cur, "pct_chg")
+    lower_shadow = _num(cur, "lower_shadow_ratio")
+    close_position = _num(cur, "close_position", 0.5)
+    distance = close / ma20 - 1 if ma20 and np.isfinite(ma20) else 0
+    if ret_5d <= -0.11 and distance <= -0.08 and rsi <= 34 and pct > -3.5 and (lower_shadow >= 0.025 or close_position >= 0.55):
+        strength = 3 + int(rsi <= 28 and close_position >= 0.65)
+        return _build(cur, "BUY", "mean_reversion_oversold_v1", "超跌均值回归", strength, f"5日跌幅{ret_5d:.1%}且偏离MA20 {distance:.1%}，RSI{rsi:.0f}低位并出现止跌迹象", "超跌反弹不是趋势反转，仓位要轻，跌破当日低点应止损")
+    return None
+
+
+
+def _top_divergence_exit(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    ret_20d = _num(cur, "ret_20d")
+    pct = _num(cur, "pct_chg")
+    rsi = _num(cur, "rsi14", 50)
+    prev_rsi = _num(prev, "rsi14", 50)
+    macd_hist = _num(cur, "macd_hist")
+    prev_macd_hist = _num(prev, "macd_hist")
+    volume_ratio = _num(cur, "volume_ratio")
+    upper_shadow = _num(cur, "upper_shadow_ratio")
+    new_high = cur.get("close", 0) >= recent["close"].max() * 0.995 if "close" in recent else False
+    momentum_divergence = rsi < prev_rsi or macd_hist < prev_macd_hist
+    if ret_20d >= 0.35 and new_high and momentum_divergence and (upper_shadow >= 0.025 or volume_ratio <= 0.85 or pct <= 1):
+        return _build(cur, "TAKE_PROFIT", "top_divergence_exit_v1", "顶部背离减仓", 4, f"20日涨幅{ret_20d:.1%}后接近新高，但RSI/MACD动能回落并出现量价背离，建议降低追涨风险", "顶部背离可能钝化，但应分批保护利润，避免高位满仓")
+    return None
+
+
+
+def _trend_breakdown_exit(prev: pd.Series, cur: pd.Series, recent: pd.DataFrame) -> Optional[SmartMoneySignal]:
+    close = _num(cur, "close")
+    ma20 = _num(cur, "ma20", np.inf)
+    ma60 = _num(cur, "ma60", np.inf)
+    pct = _num(cur, "pct_chg")
+    volume_ratio = _num(cur, "volume_ratio")
+    breakdown = close < ma20 * 0.985 and _num(prev, "close") >= _num(prev, "ma20", np.inf) * 0.995
+    deeper_break = close < ma60 * 0.99 and pct <= -2
+    if (breakdown and pct <= -2.5 and volume_ratio >= 1.2) or deeper_break:
+        strength = 4 + int(deeper_break or volume_ratio >= 1.8)
+        return _build(cur, "STOP_LOSS", "trend_breakdown_exit_v1", "趋势破位离场", strength, f"放量下跌{pct:.1f}%并跌破关键趋势均线，趋势支撑失效风险上升", "趋势破位后先控制本金风险，重新站回MA20前不宜加仓")
+    return None
+
 
 
 def _build(row: pd.Series, signal_type: str, strategy_id: str, strategy_name: str, strength: int, reason: str, risk: str) -> SmartMoneySignal:

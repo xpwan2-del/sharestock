@@ -7,10 +7,39 @@ import pandas as pd
 
 
 STYLE_STRATEGY_GROUPS = {
-    "短线情绪/连板": ["youzi_first_board_v1", "youzi_relay_v1", "weak_to_strong_v1", "leader_first_yin_v1"],
-    "低位主线/补涨": ["mainline_low_position_v1", "sector_rotation_breakout_v1", "breakout_v1"],
-    "机构趋势/中军": ["institution_trend_v1", "institution_pullback_v1", "trend_core_holding_v1", "ma_cross_v1", "macd_cross_v1"],
-    "高位风险/退潮": ["quant_lhasa_risk_v1", "high_position_distribution_v1", "emotion_retreat_defense_v1", "risk_control_v1"],
+    "短线情绪/连板": [
+        "youzi_first_board_v1",
+        "youzi_relay_v1",
+        "weak_to_strong_v1",
+        "leader_first_yin_v1",
+        "emotion_repair_confirm_v1",
+        "quant_momentum_open_v1",
+    ],
+    "低位主线/补涨": [
+        "mainline_low_position_v1",
+        "sector_rotation_breakout_v1",
+        "institution_hot_money_combo_v1",
+        "box_breakout_pullback_v1",
+        "breakout_v1",
+    ],
+    "机构趋势/中军": [
+        "institution_trend_v1",
+        "institution_pullback_v1",
+        "trend_core_holding_v1",
+        "swing_trend_band_v1",
+        "ma_cross_v1",
+        "macd_cross_v1",
+    ],
+    "高位风险/退潮": [
+        "quant_lhasa_risk_v1",
+        "hot_money_one_day_risk_v1",
+        "high_position_distribution_v1",
+        "emotion_retreat_defense_v1",
+        "mean_reversion_oversold_v1",
+        "top_divergence_exit_v1",
+        "trend_breakdown_exit_v1",
+        "risk_control_v1",
+    ],
 }
 
 STRATEGY_STYLE_MAP = {
