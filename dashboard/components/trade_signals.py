@@ -63,6 +63,7 @@ def _render_single_stock(cache):
             st.error(result.get("message", "暂无可用数据"))
             return
         _display_signal_summary(result)
+        _display_market_style(result)
         _display_signal_chart(result)
         _display_signal_table(result)
         _display_performance(result)
@@ -98,6 +99,11 @@ def _render_market_scan(cache):
             "signal_type": "信号",
             "strategy_name": "策略",
             "strength": "强度",
+            "style_group": "风格归属",
+            "style_weight": "风格权重",
+            "weighted_strength": "加权强度",
+            "market_style": "当前风格",
+            "market_regime": "风格阶段",
             "score": "综合分",
             "risk_level": "风险",
             "suggestion": "行动建议",
@@ -128,14 +134,63 @@ def _display_signal_summary(result):
 
     if latest:
         color = _signal_color(latest.get("signal_type"))
+        style_group = latest.get("style_group", "未知")
+        style_weight = float(latest.get("style_weight", 1) or 1)
+        weighted_strength = float(latest.get("weighted_strength", latest.get("strength", 0)) or 0)
         st.markdown(f'''
         <div style="border-left:6px solid {color}; padding:16px; background:#f8fafc; border-radius:10px; margin:12px 0;">
-            <div style="font-size:20px; font-weight:800; color:{color};">{_signal_label(latest.get("signal_type"))} · {latest.get("strategy_name")} · 强度 {latest.get("strength")}/5</div>
-            <div style="margin-top:8px; color:#334155;">触发价：{latest.get("price", 0):.2f} ｜ 触发日期：{pd.to_datetime(latest.get("date")).strftime("%Y-%m-%d")}</div>
+            <div style="font-size:20px; font-weight:800; color:{color};">{_signal_label(latest.get("signal_type"))} · {latest.get("strategy_name")} · 强度 {latest.get("strength")}/5 · 加权 {weighted_strength:.2f}</div>
+            <div style="margin-top:8px; color:#334155;">风格归属：{style_group} ｜ 动态权重：{style_weight:.2f} ｜ 触发价：{latest.get("price", 0):.2f} ｜ 触发日期：{pd.to_datetime(latest.get("date")).strftime("%Y-%m-%d")}</div>
             <div style="margin-top:8px; color:#334155;">触发原因：{latest.get("reason")}</div>
             <div style="margin-top:8px; color:#b91c1c;">风险提示：{latest.get("risk")}</div>
         </div>
         ''', unsafe_allow_html=True)
+
+
+def _display_market_style(result):
+    style = result.get("market_style") or {}
+    if not style:
+        return
+    st.markdown("### 市场风格自学习")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("主导风格", style.get("dominant_style", "未知"))
+    with col2:
+        st.metric("风格阶段", style.get("regime", "未知"))
+    with col3:
+        st.metric("综合评分", _format_style_score(style))
+    with col4:
+        st.metric("分析样本", f"{(style.get('metrics') or {}).get('recent_days', 0)}日")
+    st.info(style.get("advice", "暂无风格建议"))
+
+    score_rows = []
+    style_scores = style.get("style_scores") or {}
+    price_scores = style.get("price_style_scores") or {}
+    perf_scores = style.get("performance_style_scores") or {}
+    for name, score in style_scores.items():
+        score_rows.append({
+            "风格": name,
+            "综合分": score,
+            "价格结构分": price_scores.get(name),
+            "历史胜率分": perf_scores.get(name),
+        })
+    if score_rows:
+        st.dataframe(pd.DataFrame(score_rows).sort_values("综合分", ascending=False), use_container_width=True, hide_index=True)
+
+    weights = style.get("strategy_weights") or {}
+    if weights:
+        names = {
+            "ma_cross_v1": "均线金叉/死叉",
+            "macd_cross_v1": "MACD金叉/死叉",
+            "rsi_rebound_v1": "RSI超卖反弹",
+            "breakout_v1": "放量突破",
+            "risk_control_v1": "止盈止损",
+        }
+        names.update(get_builtin_strategy_name_map())
+        weight_rows = [{"策略": names.get(strategy_id, strategy_id), "策略ID": strategy_id, "动态权重": weight} for strategy_id, weight in weights.items()]
+        with st.expander("查看策略动态权重", expanded=False):
+            st.dataframe(pd.DataFrame(weight_rows).sort_values("动态权重", ascending=False), use_container_width=True, hide_index=True)
+
 
 
 def _display_signal_chart(result):
@@ -193,12 +248,18 @@ def _display_signal_table(result):
             display[col] = display[col].apply(lambda x: format_pct(x) if pd.notna(x) else "待验证")
     display["signal_type"] = display["signal_type"].apply(_signal_label)
     display["date"] = pd.to_datetime(display["date"]).dt.strftime("%Y-%m-%d")
-    display = display[["date", "signal_type", "strategy_name", "strength", "price", "reason", "return_3d", "return_5d", "return_10d", "return_20d"]]
+    columns = ["date", "signal_type", "strategy_name", "strength", "price", "reason", "return_3d", "return_5d", "return_10d", "return_20d"]
+    optional_columns = ["style_group", "style_weight", "weighted_strength"]
+    columns = columns[:4] + [item for item in optional_columns if item in display.columns] + columns[4:]
+    display = display[columns]
     display = display.rename(columns={
         "date": "日期",
         "signal_type": "信号",
         "strategy_name": "策略",
         "strength": "强度",
+        "style_group": "风格归属",
+        "style_weight": "风格权重",
+        "weighted_strength": "加权强度",
         "price": "触发价",
         "reason": "原因",
         "return_3d": "3日收益",
@@ -356,6 +417,14 @@ def _format_signal_date(signal):
     if not signal:
         return "暂无"
     return pd.to_datetime(signal.get("date")).strftime("%Y-%m-%d")
+
+
+def _format_style_score(style):
+    dominant = style.get("dominant_style")
+    scores = style.get("style_scores") or {}
+    score = scores.get(dominant)
+    return f"{score:.1f}" if isinstance(score, (int, float)) else "-"
+
 
 
 def _sample_reliability(sample_count):

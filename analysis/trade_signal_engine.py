@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from analysis.market_style_learning import apply_style_weights, build_market_style_report, describe_style_for_signal, style_adjusted_score
 from analysis.smart_money_strategies import generate_custom_strategy_signals, generate_smart_money_signals
 from data.market_data import MarketDataCollector
 from data.watchlist_store import WatchlistStore
@@ -66,10 +67,12 @@ class TradeSignalEngine:
 
         signals = self.generate_signals(df)
         evaluated = self.evaluate_signals(df, signals, holding_periods)
+        performance = self.summarize_performance(evaluated, holding_periods)
+        style_report = build_market_style_report(df, evaluated, performance)
+        evaluated = apply_style_weights(evaluated, style_report)
         latest = evaluated.iloc[-1].to_dict() if not evaluated.empty else None
         latest_buy = self._latest_by_type(evaluated, "BUY")
         latest_sell = self._latest_by_type(evaluated, "SELL")
-        performance = self.summarize_performance(evaluated, holding_periods)
         current = df.iloc[-1]
 
         return {
@@ -81,9 +84,10 @@ class TradeSignalEngine:
             "latest_signal": latest,
             "latest_buy": latest_buy,
             "latest_sell": latest_sell,
-            "signal_score": self.score_result(current, latest, performance),
-            "action_suggestion": self.suggest_action(current, latest, performance),
-            "risk_level": self.estimate_risk(current, latest),
+            "signal_score": self.score_result(current, latest, performance, style_report),
+            "action_suggestion": self.suggest_action(current, latest, performance, style_report),
+            "risk_level": self.estimate_risk(current, latest, style_report),
+            "market_style": style_report,
             "signals": evaluated,
             "performance": performance,
             "data": df,
@@ -119,6 +123,11 @@ class TradeSignalEngine:
                     "signal_type": signal.get("signal_type"),
                     "strategy_name": signal.get("strategy_name"),
                     "strength": signal.get("strength"),
+                    "style_group": signal.get("style_group"),
+                    "style_weight": signal.get("style_weight"),
+                    "weighted_strength": signal.get("weighted_strength"),
+                    "market_style": result.get("market_style", {}).get("dominant_style"),
+                    "market_regime": result.get("market_style", {}).get("regime"),
                     "score": score,
                     "risk_level": result.get("risk_level"),
                     "suggestion": result.get("action_suggestion"),
@@ -134,10 +143,10 @@ class TradeSignalEngine:
                 continue
         return pd.DataFrame(rows).sort_values(["score", "strength", "win_rate_10d"], ascending=False) if rows else pd.DataFrame()
 
-    def score_result(self, current: pd.Series, latest: Optional[Dict], performance: Dict) -> float:
+    def score_result(self, current: pd.Series, latest: Optional[Dict], performance: Dict, style_report: Optional[Dict] = None) -> float:
         if not latest:
             return 0.0
-        strength_score = float(latest.get("strength", 1)) * 14
+        strength_score = float(latest.get("weighted_strength", latest.get("strength", 1))) * 14
         trend_score = 10 if current.get("close", 0) > current.get("ma20", np.inf) else -6
         volume_score = min(max(float(current.get("volume_ratio", 1) or 1) - 1, 0) * 12, 12)
         stat = performance.get(latest.get("strategy_id", ""), {}).get(10, {})
@@ -145,30 +154,34 @@ class TradeSignalEngine:
         win_score = (float(win_rate) - 0.5) * 50 if win_rate is not None and pd.notna(win_rate) else 0
         risk_penalty = 10 if latest.get("signal_type") in ("STOP_LOSS", "SELL") else 0
         score = strength_score + trend_score + volume_score + win_score - risk_penalty
-        return round(float(max(0, min(100, score))), 1)
+        base_score = round(float(max(0, min(100, score))), 1)
+        return style_adjusted_score(base_score, latest, style_report or {})
 
-    def suggest_action(self, current: pd.Series, latest: Optional[Dict], performance: Dict) -> str:
+    def suggest_action(self, current: pd.Series, latest: Optional[Dict], performance: Dict, style_report: Optional[Dict] = None) -> str:
         if not latest:
             return "暂无明确买卖点，保持观察"
         signal_type = latest.get("signal_type")
         stat = performance.get(latest.get("strategy_id", ""), {}).get(10, {})
         sample_count = int(stat.get("sample_count") or 0)
         win_rate = stat.get("win_rate")
+        style_note = describe_style_for_signal(latest, style_report or {})
         if signal_type == "BUY":
             if sample_count >= 10 and win_rate is not None and win_rate >= 0.55:
-                return "出现买入信号且历史胜率偏高，可加入重点观察并等待成交确认"
-            return "出现买入信号，但样本或胜率一般，建议小仓观察"
+                return f"出现买入信号且历史胜率偏高，可加入重点观察并等待成交确认。{style_note}"
+            return f"出现买入信号，但样本或胜率一般，建议小仓观察。{style_note}"
         if signal_type == "SELL":
-            return "出现卖出信号，若已持仓建议降低仓位或设置保护止损"
+            return f"出现卖出信号，若已持仓建议降低仓位或设置保护止损。{style_note}"
         if signal_type == "STOP_LOSS":
-            return "出现止损风险，优先控制回撤，避免亏损扩大"
+            return f"出现止损风险，优先控制回撤，避免亏损扩大。{style_note}"
         if signal_type == "TAKE_PROFIT":
-            return "出现止盈提醒，可考虑分批锁定利润"
-        return "信号偏观察性质，等待更强确认"
+            return f"出现止盈提醒，可考虑分批锁定利润。{style_note}"
+        return f"信号偏观察性质，等待更强确认。{style_note}"
 
-    def estimate_risk(self, current: pd.Series, latest: Optional[Dict]) -> str:
+    def estimate_risk(self, current: pd.Series, latest: Optional[Dict], style_report: Optional[Dict] = None) -> str:
         if latest and latest.get("signal_type") == "STOP_LOSS":
             return "高"
+        if style_report and style_report.get("dominant_style") == "高位风险/退潮":
+            return "高" if latest and latest.get("signal_type") in ("BUY", "SELL", "TAKE_PROFIT") else "中高"
         if current.get("close", 0) < current.get("ma20", np.inf):
             return "中高"
         if current.get("volatility_20d", 0) > 0.04:
@@ -195,6 +208,11 @@ class TradeSignalEngine:
                     "signal_type": latest.get("signal_type", "WATCH"),
                     "strategy_name": latest.get("strategy_name", "暂无强信号"),
                     "strength": latest.get("strength", 0),
+                    "style_group": latest.get("style_group", "未知"),
+                    "style_weight": latest.get("style_weight", 1.0),
+                    "weighted_strength": latest.get("weighted_strength", latest.get("strength", 0)),
+                    "market_style": result.get("market_style", {}).get("dominant_style"),
+                    "market_regime": result.get("market_style", {}).get("regime"),
                     "score": result.get("signal_score", 0),
                     "risk_level": result.get("risk_level", "未知"),
                     "suggestion": result.get("action_suggestion", "暂无明确买卖点，保持观察"),
@@ -255,6 +273,8 @@ class TradeSignalEngine:
         data = self.market.calculate_technical_indicators(data)
         if "pct_chg" not in data.columns:
             data["pct_chg"] = data["close"].pct_change() * 100
+        data["ret_5d"] = data["close"].pct_change(5)
+        data["ret_20d"] = data["close"].pct_change(20)
         data["ma20_slope"] = data["ma20"].diff(5) / data["ma20"].shift(5)
         data["breakout_20"] = data["close"] > data["high"].rolling(20).max().shift(1)
         data["breakdown_20"] = data["close"] < data["low"].rolling(20).min().shift(1)
